@@ -2,6 +2,7 @@ import math
 from html import escape
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -105,9 +106,20 @@ async def activist_detail(call: CallbackQuery):
     if access.allows("manage_scores"):
         builder.button(text="➕ Ball qo‘shish", callback_data=f"act:score:{user_id}:{page}:add")
         builder.button(text="➖ Ball ayirish", callback_data=f"act:score:{user_id}:{page}:sub")
-    builder.button(text="◀️ Ro‘yxatga qaytish", callback_data=f"act:p:{page}")
+    builder.button(text="❌ Yopish", callback_data="act:detailclose")
     builder.adjust(2, 1)
-    await call.message.edit_text(text, reply_markup=builder.as_markup())
+    # Keep the paginated list in place and open the selected profile as a new
+    # message. A photo message cannot later be converted back into a text list.
+    if user["profile_photo_file_id"]:
+        try:
+            await call.message.answer_photo(
+                photo=user["profile_photo_file_id"], caption=text,
+                reply_markup=builder.as_markup(),
+            )
+        except TelegramAPIError:
+            await call.message.answer(text, reply_markup=builder.as_markup())
+    else:
+        await call.message.answer(text, reply_markup=builder.as_markup())
     await call.answer()
 
 
@@ -210,6 +222,12 @@ async def score_adjust_reason(msg: Message, state: FSMContext):
 
 @router.callback_query(F.data == "act:noop")
 async def activists_noop(call: CallbackQuery):
+    await call.answer()
+
+
+@router.callback_query(F.data == "act:detailclose")
+async def activist_detail_close(call: CallbackQuery):
+    await call.message.delete()
     await call.answer()
 
 
