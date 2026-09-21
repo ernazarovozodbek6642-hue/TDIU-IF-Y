@@ -87,6 +87,13 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         self.db.overrides[102] = [dict(permission='view_activists', allowed=False)]
         self.assertFalse((await get_access(self.db, 102)).allows('view_activists'))
 
+    async def test_delete_activist_permission_is_explicit_and_revocable(self):
+        self.assertFalse((await get_access(self.db, 101)).allows('delete_activists'))
+        self.db.overrides[101] = [dict(permission='delete_activists', allowed=True)]
+        self.assertTrue((await get_access(self.db, 101)).allows('delete_activists'))
+        self.db.overrides[101] = [dict(permission='delete_activists', allowed=False)]
+        self.assertFalse((await get_access(self.db, 101)).allows('delete_activists'))
+
     async def test_permission_revocation_is_immediate(self):
         self.assertTrue((await get_access(self.db, 101)).allows('broadcast'))
         self.db.overrides[101] = [dict(permission='broadcast', allowed=False)]

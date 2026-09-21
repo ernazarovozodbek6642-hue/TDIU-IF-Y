@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from data.config import SUPER_ADMIN_ID
 from keyboards.default.ADMIN_Keyboard import admin_menu
 from loader import bot, db
 from states.Admin_state import ACTIVISTS
@@ -106,6 +107,8 @@ async def activist_detail(call: CallbackQuery):
     if access.allows("manage_scores"):
         builder.button(text="➕ Ball qo‘shish", callback_data=f"act:score:{user_id}:{page}:add")
         builder.button(text="➖ Ball ayirish", callback_data=f"act:score:{user_id}:{page}:sub")
+    if access.allows("delete_activists") and int(user_id) != SUPER_ADMIN_ID:
+        builder.button(text="🗑 Faolni o‘chirish", callback_data=f"act:delete:{user_id}:{page}")
     builder.button(text="❌ Yopish", callback_data="act:detailclose")
     builder.adjust(2, 1)
     # Keep the paginated list in place and open the selected profile as a new
@@ -218,6 +221,71 @@ async def score_adjust_reason(msg: Message, state: FSMContext):
         bot, msg.from_user,
         f"Faol balli o‘zgartirildi: {user['full_name']} ({user_id}), {sign}{amount}; sabab: {reason}",
     )
+
+
+@router.callback_query(F.data.startswith("act:delete:"))
+async def activist_delete_start(call: CallbackQuery):
+    _, _, user_id, page = call.data.split(":")
+    user_id, page = int(user_id), int(page)
+    if user_id == SUPER_ADMIN_ID:
+        await call.answer("Super admin profilini o‘chirib bo‘lmaydi", show_alert=True)
+        return
+    user = await db.get_user(user_id)
+    if not user:
+        await call.answer("Faol topilmadi", show_alert=True)
+        return
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="✅ Ha, o‘chirish",
+        callback_data=f"act:deleteconfirm:{user_id}:{page}",
+    )
+    builder.button(text="❌ Bekor qilish", callback_data="act:deletecancel")
+    builder.adjust(1)
+    await call.message.answer(
+        f"⚠️ <b>{escape(str(user['full_name']))}</b> faol ro‘yxatidan o‘chirilsinmi?\n\n"
+        "Tarixiy tadbir va ball yozuvlari saqlanadi. Ochiq tadbirlardagi kutilayotgan "
+        "yozuvlari bekor qilinadi.",
+        reply_markup=builder.as_markup(),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("act:deleteconfirm:"))
+async def activist_delete_confirm(call: CallbackQuery, state: FSMContext):
+    _, _, user_id, page = call.data.split(":")
+    user_id, page = int(user_id), int(page)
+    if user_id == SUPER_ADMIN_ID:
+        await call.answer("Super admin profilini o‘chirib bo‘lmaydi", show_alert=True)
+        return
+    user = await db.archive_user(user_id, call.from_user.id)
+    if not user:
+        await call.answer("Faol avval o‘chirilgan yoki topilmadi", show_alert=True)
+        return
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔄 Ro‘yxatni yangilash", callback_data=f"act:p:{page}")
+    await call.message.edit_text(
+        f"✅ <b>{escape(str(user['full_name']))}</b> faol ro‘yxatidan o‘chirildi.\n"
+        "Tarixiy ma’lumotlar saqlab qolindi.",
+        reply_markup=builder.as_markup(),
+    )
+    try:
+        await bot.send_message(
+            user_id,
+            "Sizning faol profilingiz administrator tomonidan ro‘yxatdan chiqarildi.",
+        )
+    except TelegramAPIError:
+        pass
+    await log_action(
+        bot, call.from_user,
+        f"Faol ro‘yxatdan o‘chirildi: {user['full_name']} ({user_id})",
+    )
+    await call.answer("O‘chirildi")
+
+
+@router.callback_query(F.data == "act:deletecancel")
+async def activist_delete_cancel(call: CallbackQuery):
+    await call.message.delete()
+    await call.answer("Bekor qilindi")
 
 
 @router.callback_query(F.data == "act:noop")

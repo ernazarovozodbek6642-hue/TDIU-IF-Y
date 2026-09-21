@@ -15,13 +15,18 @@ PERMISSIONS = {
     "view_activists": "Faollarni ko‘rish va izlash",
     "manage_scores": "Faollarga ball qo‘shish va ayirish",
     "export_activists": "Faollar ma’lumotini Excel orqali olish",
+    "delete_activists": "Faolni ro‘yxatdan o‘chirish",
 }
-OPTIONAL_PERMISSIONS = frozenset({"view_activists", "manage_scores", "export_activists"})
+OPTIONAL_PERMISSIONS = frozenset({
+    "view_activists", "manage_scores", "export_activists", "delete_activists",
+})
 ROLE_LABELS = {"super": "Super admin", "chief": "Bosh koordinator", "assistant": "Yordamchi admin",
                "responsible": "Tadbir mas’uli"}
 ROLE_PERMISSIONS = {
     "super": frozenset(PERMISSIONS),
-    "chief": frozenset(PERMISSIONS),
+    # Deleting an activist is intentionally not a default chief capability;
+    # the super admin may grant it explicitly when needed.
+    "chief": frozenset(set(PERMISSIONS) - {"delete_activists"}),
     "assistant": frozenset({"create_event", "edit_event", "attendance", "close_event", "reports", "broadcast"}),
     "responsible": frozenset({"attendance", "reports"}),
 }

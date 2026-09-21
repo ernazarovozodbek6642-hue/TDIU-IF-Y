@@ -17,6 +17,7 @@ Yangi koordinator botga `/start`, keyin `/admin` yuboradi. Botga yozmagan akkaun
 - Super admin: adminlarni tayinlash, sozlamalar, guruhlar va barcha amallar. O‘zini paneldan bloklay olmaydi.
 - Super admin **Faollar** bo‘limida tasdiqlangan talabalarni 15 tadan ko‘radi, F.I.Sh, username, guruh yoki Telegram ID bo‘yicha qidiradi va batafsil ma’lumotini ochadi.
 - **Faollarni ko‘rish**, **faollar ballini boshqarish** va **faollar Excel eksporti** huquqlari super admin tomonidan boshqa adminlarga alohida beriladi yoki olib qo‘yiladi. Ball qo‘shish/ayirishda izoh majburiy; o‘zgarish muallifi va vaqti bazada saqlanadi.
+- **Faolni ro‘yxatdan o‘chirish** alohida, standart holatda o‘chiq huquqdir. O‘chirish ikki bosqichda tasdiqlanadi; tarixiy tadbir va ball ma’lumotlari saqlanadi, ochiq tadbirlardagi kutilayotgan yozuvlar bekor qilinadi.
 - Bosh koordinator: barcha yo‘nalishlarda yaratish, tahrirlash, tasdiqlash, davomat, yakunlash, hisobot, xabar va oy talabalarini boshqarish. Har bir huquqni super admin cheklashi mumkin.
 - Yordamchi admin: tadbir yaratadi; faqat o‘zi yaratgan yoki mas’ul sifatida biriktirilgan tadbirlarni ko‘radi va boshqaradi. Tasdiqlash, barcha talabalar eksporti, admin boshqaruvi va tizim sozlamalari berilmaydi.
 

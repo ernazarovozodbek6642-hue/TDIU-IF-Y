@@ -22,6 +22,8 @@ def setup_routers(dp: Dispatcher):
         "score_adjust_start": "manage_scores",
         "score_adjust_amount": "manage_scores",
         "score_adjust_reason": "manage_scores",
+        "activist_delete_start": "delete_activists",
+        "activist_delete_confirm": "delete_activists",
     })
     protect(approvals.router, "approve_event", event_scope=True)
     protect(add_event.router, "create_event")

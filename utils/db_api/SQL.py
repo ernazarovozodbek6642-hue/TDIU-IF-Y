@@ -356,6 +356,67 @@ class Database(AccessDatabase):
         sql = "DELETE FROM users WHERE user_id = $1"
         return await self.execute(sql, user_id, execute=True)
 
+    async def archive_user(self, user_id: int, actor_id: int):
+        """Remove an activist from active use while preserving historical records."""
+        if self.pool is None:
+            raise RuntimeError("Database pool is not initialized")
+        async with self.pool.acquire() as connection:
+            async with connection.transaction():
+                user = await connection.fetchrow(
+                    """SELECT * FROM users
+                       WHERE user_id=$1 AND registration_status='approved'
+                       FOR UPDATE""",
+                    user_id,
+                )
+                if not user:
+                    return None
+
+                # Lock affected events in a stable order before freeing places.
+                event_ids = await connection.fetch(
+                    """SELECT e.event_id
+                       FROM events e JOIN event_users eu ON eu.event_id=e.event_id
+                       WHERE eu.user_id=$1 AND eu.status='pending' AND NOT e.is_closed
+                       ORDER BY e.event_id FOR UPDATE OF e""",
+                    user_id,
+                )
+                for item in event_ids:
+                    event_id = item["event_id"]
+                    event_user = await connection.fetchrow(
+                        """SELECT * FROM event_users
+                           WHERE event_id=$1 AND user_id=$2 FOR UPDATE""",
+                        event_id, user_id,
+                    )
+                    if not event_user or event_user["status"] != "pending":
+                        continue
+                    await connection.execute(
+                        """UPDATE event_users SET status='withdrawn'
+                           WHERE event_id=$1 AND user_id=$2 AND status='pending'""",
+                        event_id, user_id,
+                    )
+                    if not event_user["is_waitlist"]:
+                        await connection.fetchrow(
+                            """WITH next_user AS (
+                                   SELECT user_id FROM event_users
+                                   WHERE event_id=$1 AND is_waitlist=TRUE AND status='pending'
+                                   ORDER BY joined_at, user_id
+                                   LIMIT 1 FOR UPDATE SKIP LOCKED
+                               )
+                               UPDATE event_users eu SET is_waitlist=FALSE
+                               FROM next_user
+                               WHERE eu.event_id=$1 AND eu.user_id=next_user.user_id
+                               RETURNING eu.*""",
+                            event_id,
+                        )
+
+                return await connection.fetchrow(
+                    """UPDATE users SET registration_status='deleted', is_excluded=TRUE,
+                           reviewed_by=$2, reviewed_at=NOW(),
+                           rejection_reason='Admin tomonidan faol ro‘yxatidan o‘chirildi'
+                       WHERE user_id=$1 AND registration_status='approved'
+                       RETURNING *""",
+                    user_id, actor_id,
+                )
+
     async def get_all_users(self):
         sql = "SELECT * FROM users WHERE registration_status='approved' ORDER BY full_name"
         return await self.execute(sql, fetch=True)
