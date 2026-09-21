@@ -117,6 +117,21 @@ class Database(AccessDatabase):
         await self.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE;", execute=True)
 
         await self.execute("""
+        CREATE TABLE IF NOT EXISTS score_adjustments (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+            amount INTEGER NOT NULL CHECK (amount <> 0),
+            reason TEXT NOT NULL CHECK (char_length(trim(reason)) >= 3),
+            actor_id BIGINT NOT NULL,
+            month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+            year INTEGER NOT NULL CHECK (year BETWEEN 2000 AND 9999),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS score_adjustments_user_month_idx
+            ON score_adjustments(user_id, year, month, created_at DESC);
+        """, execute=True)
+
+        await self.execute("""
         CREATE TABLE IF NOT EXISTS events (
         event_id BIGINT PRIMARY KEY,
         event_name VARCHAR(255) NOT NULL,
@@ -345,6 +360,35 @@ class Database(AccessDatabase):
         sql = "SELECT * FROM users WHERE registration_status='approved' ORDER BY full_name"
         return await self.execute(sql, fetch=True)
 
+    async def count_approved_users(self, query: str = None):
+        query = (query or "").strip()
+        return await self.execute(
+            """SELECT COUNT(*) FROM users
+               WHERE registration_status='approved'
+                 AND ($1='' OR full_name ILIKE '%' || $1 || '%'
+                      OR COALESCE(user_name, '') ILIKE '%' || $1 || '%'
+                      OR COALESCE(group_name, '') ILIKE '%' || $1 || '%'
+                      OR user_id::text=$1)
+            """,
+            query, fetchval=True,
+        )
+
+    async def get_approved_users_page(self, limit: int = 15, offset: int = 0,
+                                      query: str = None):
+        query = (query or "").strip()
+        return await self.execute(
+            """SELECT * FROM users
+               WHERE registration_status='approved'
+                 AND ($1='' OR full_name ILIKE '%' || $1 || '%'
+                      OR COALESCE(user_name, '') ILIKE '%' || $1 || '%'
+                      OR COALESCE(group_name, '') ILIKE '%' || $1 || '%'
+                      OR user_id::text=$1)
+               ORDER BY full_name, user_id
+               LIMIT $2 OFFSET $3
+            """,
+            query, limit, offset, fetch=True,
+        )
+
     async def get_birthdays_for_date(self, celebration_date: date):
         return await self.execute(
             """SELECT user_id, full_name, birth_date FROM users
@@ -397,6 +441,28 @@ class Database(AccessDatabase):
     async def set_excluded(self, user_id: int, is_excluded: bool = True):
         sql = "UPDATE users SET is_excluded=$2 WHERE user_id=$1 RETURNING *;"
         return await self.execute(sql, user_id, is_excluded, fetchrow=True)
+
+    async def add_score_adjustment(self, user_id: int, amount: int, reason: str,
+                                   actor_id: int, month: int, year: int):
+        if not amount:
+            raise ValueError("Score adjustment cannot be zero")
+        reason = (reason or "").strip()
+        if len(reason) < 3:
+            raise ValueError("Score adjustment reason is too short")
+        return await self.execute(
+            """INSERT INTO score_adjustments(user_id,amount,reason,actor_id,month,year)
+               SELECT user_id,$2,$3,$4,$5,$6 FROM users
+               WHERE user_id=$1 AND registration_status='approved'
+               RETURNING *""",
+            user_id, amount, reason, actor_id, month, year, fetchrow=True,
+        )
+
+    async def get_recent_score_adjustments(self, user_id: int, limit: int = 5):
+        return await self.execute(
+            """SELECT * FROM score_adjustments WHERE user_id=$1
+               ORDER BY created_at DESC, id DESC LIMIT $2""",
+            user_id, limit, fetch=True,
+        )
 
     # ----------------- GROUPS TABLE -----------------
     async def add_group(self, group_id: int, title: str = None):
@@ -874,35 +940,57 @@ class Database(AccessDatabase):
         (confirmed = +score, not_attended/rejected = -penalty_score).
         """
         sql = """
+        WITH event_points AS (
+            SELECT eu.user_id, COALESCE(SUM(
+                CASE
+                    WHEN eu.status = 'confirmed' THEN e.score
+                    WHEN eu.status = 'not_attended' THEN -e.penalty_score
+                    ELSE 0
+                END
+            ), 0) AS points
+            FROM event_users eu
+            JOIN events e ON e.event_id = eu.event_id
+            WHERE EXTRACT(MONTH FROM e.date) = $1 AND EXTRACT(YEAR FROM e.date) = $2
+            GROUP BY eu.user_id
+        ), adjustment_points AS (
+            SELECT user_id, COALESCE(SUM(amount), 0) AS points
+            FROM score_adjustments
+            WHERE month=$1 AND year=$2
+            GROUP BY user_id
+        ), participant_ids AS (
+            SELECT user_id FROM event_points
+            UNION
+            SELECT user_id FROM adjustment_points
+        )
         SELECT u.user_id, u.full_name, u.user_name,
-               COALESCE(SUM(
-                   CASE
-                       WHEN eu.status = 'confirmed' THEN e.score
-                       WHEN eu.status = 'not_attended' THEN -e.penalty_score
-                       ELSE 0
-                   END
-               ), 0) AS total_score
-        FROM event_users eu
-        JOIN events e ON e.event_id = eu.event_id
-        JOIN users u ON u.user_id = eu.user_id
-        WHERE EXTRACT(MONTH FROM e.date) = $1 AND EXTRACT(YEAR FROM e.date) = $2
-        GROUP BY u.user_id, u.full_name, u.user_name
-        ORDER BY total_score DESC;
+               COALESCE(ep.points, 0) + COALESCE(ap.points, 0) AS total_score
+        FROM participant_ids p
+        JOIN users u ON u.user_id=p.user_id
+        LEFT JOIN event_points ep ON ep.user_id=p.user_id
+        LEFT JOIN adjustment_points ap ON ap.user_id=p.user_id
+        WHERE u.registration_status='approved'
+        ORDER BY total_score DESC, u.full_name;
         """
         return await self.execute(sql, month, year, fetch=True)
 
     async def get_user_monthly_score(self, user_id: int, month: int, year: int):
         sql = """
-        SELECT COALESCE(SUM(
-                   CASE
-                       WHEN eu.status = 'confirmed' THEN e.score
-                       WHEN eu.status = 'not_attended' THEN -e.penalty_score
-                       ELSE 0
-                   END
-               ), 0) AS total_score
-        FROM event_users eu
-        JOIN events e ON e.event_id = eu.event_id
-        WHERE eu.user_id = $1 AND EXTRACT(MONTH FROM e.date) = $2 AND EXTRACT(YEAR FROM e.date) = $3;
+        SELECT
+            COALESCE((
+                SELECT SUM(CASE
+                    WHEN eu.status='confirmed' THEN e.score
+                    WHEN eu.status='not_attended' THEN -e.penalty_score
+                    ELSE 0
+                END)
+                FROM event_users eu JOIN events e ON e.event_id=eu.event_id
+                WHERE eu.user_id=$1
+                  AND EXTRACT(MONTH FROM e.date)=$2
+                  AND EXTRACT(YEAR FROM e.date)=$3
+            ), 0)
+            + COALESCE((
+                SELECT SUM(amount) FROM score_adjustments
+                WHERE user_id=$1 AND month=$2 AND year=$3
+            ), 0) AS total_score;
         """
         return await self.execute(sql, user_id, month, year, fetchval=True)
 

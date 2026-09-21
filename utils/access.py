@@ -12,7 +12,11 @@ PERMISSIONS = {
     "reports": "Hisobotlarni ko‘rish",
     "broadcast": "Xabar yuborish",
     "winners": "Oy talabalarini boshqarish",
+    "view_activists": "Faollarni ko‘rish va izlash",
+    "manage_scores": "Faollarga ball qo‘shish va ayirish",
+    "export_activists": "Faollar ma’lumotini Excel orqali olish",
 }
+OPTIONAL_PERMISSIONS = frozenset({"view_activists", "manage_scores", "export_activists"})
 ROLE_LABELS = {"super": "Super admin", "chief": "Bosh koordinator", "assistant": "Yordamchi admin",
                "responsible": "Tadbir mas’uli"}
 ROLE_PERMISSIONS = {
@@ -66,8 +70,19 @@ async def get_access(db, user_id):
         return Access(user_id)
     allowed = ROLE_PERMISSIONS.get(row["role"], frozenset())
     # Unknown permissions never grant access; a role change resets overrides.
-    disabled = {r["permission"] for r in await db.get_admin_overrides(user_id) if not r["allowed"]}
-    return Access(user_id, row["role"], row.get("direction_id"), row.get("display_name"), allowed - disabled)
+    overrides = await db.get_admin_overrides(user_id)
+    disabled = {r["permission"] for r in overrides if not r["allowed"]}
+    # Sensitive optional capabilities are disabled by default and may only be
+    # granted explicitly by the super admin. Existing role caps remain intact
+    # for every other permission.
+    enabled_optional = {
+        r["permission"] for r in overrides
+        if r["allowed"] and r["permission"] in OPTIONAL_PERMISSIONS
+    }
+    return Access(
+        user_id, row["role"], row.get("direction_id"), row.get("display_name"),
+        (allowed - disabled) | enabled_optional,
+    )
 
 
 async def can_view_event(db, user_id, event):

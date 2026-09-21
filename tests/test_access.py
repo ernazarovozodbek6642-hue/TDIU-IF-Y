@@ -75,6 +75,18 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         self.db.overrides[102] = [dict(permission='approve_event', allowed=True)]
         self.assertFalse((await get_access(self.db, 102)).allows('approve_event'))
 
+    async def test_optional_activist_permissions_can_be_granted_and_revoked(self):
+        self.assertFalse((await get_access(self.db, 102)).allows('view_activists'))
+        self.db.overrides[102] = [
+            dict(permission='view_activists', allowed=True),
+            dict(permission='manage_scores', allowed=True),
+        ]
+        access = await get_access(self.db, 102)
+        self.assertTrue(access.allows('view_activists'))
+        self.assertTrue(access.allows('manage_scores'))
+        self.db.overrides[102] = [dict(permission='view_activists', allowed=False)]
+        self.assertFalse((await get_access(self.db, 102)).allows('view_activists'))
+
     async def test_permission_revocation_is_immediate(self):
         self.assertTrue((await get_access(self.db, 101)).allows('broadcast'))
         self.db.overrides[101] = [dict(permission='broadcast', allowed=False)]

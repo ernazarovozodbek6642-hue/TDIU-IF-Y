@@ -42,3 +42,9 @@ class BROADCAST(StatesGroup):
 class WINNERS(StatesGroup):
     selecting = State()
 
+
+class ACTIVISTS(StatesGroup):
+    searching = State()
+    score_amount = State()
+    score_reason = State()
+

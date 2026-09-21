@@ -16,7 +16,7 @@ from utils.spreadsheets import safe_excel_value
 router = Router()
 router.message.filter(IsAdmin())
 
-HEADERS = ["№", "F.I.Sh", "Guruh", "Tug‘ilgan sana", "Telefon", "Passport", "Manzil", "TTJda turadi",
+HEADERS = ["№", "F.I.Sh", "Username", "Guruh", "Tug‘ilgan sana", "Telefon", "Passport", "Manzil", "TTJda turadi",
             "Joriy oy bali", "Jarimalar soni", "Chetlatilgan"]
 
 
@@ -26,7 +26,7 @@ async def export_users(msg: Message):
     if msg.chat.type != "private":
         await msg.answer("Shaxsiy ma'lumotlar eksporti faqat bot bilan shaxsiy chatda beriladi.")
         return
-    if access.role not in {"super", "chief"}:
+    if not access.allows("export_activists"):
         await msg.answer("Barcha faollar ma'lumotlarini eksport qilish uchun ruxsatingiz yo'q.")
         return
     users = await db.get_all_users()
@@ -50,6 +50,7 @@ async def export_users(msg: Message):
         ws.append([
             i,
             safe_excel_value(user["full_name"]),
+            safe_excel_value(f"@{user['user_name']}" if user["user_name"] else ""),
             safe_excel_value(user["group_name"]),
             str(user["birth_date"]) if user["birth_date"] else "",
             safe_excel_value(user["phone_number"]),

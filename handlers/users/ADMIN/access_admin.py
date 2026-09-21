@@ -9,7 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from data.config import SUPER_ADMIN_ID
 from loader import db
-from utils.access import PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS, get_access
+from utils.access import OPTIONAL_PERMISSIONS, PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS, get_access
 
 router = Router()
 
@@ -119,9 +119,9 @@ async def show_user(call, target):
     overrides = {r['permission']: r['allowed'] for r in await db.get_admin_overrides(target)}
     items = []
     for permission in PERMISSIONS:
-        if permission not in ROLE_PERMISSIONS[row['role']]:
+        if permission not in ROLE_PERMISSIONS[row['role']] and permission not in OPTIONAL_PERMISSIONS:
             continue
-        enabled = overrides.get(permission, True)
+        enabled = overrides.get(permission, permission in ROLE_PERMISSIONS[row['role']])
         items.append((f"{'✅' if enabled else '⛔'} {PERMISSIONS[permission]}", f'acl:perm:{target}:{permission}:{int(not enabled)}'))
     items += [(('⛔ Kirishni to‘xtatish' if row['active'] else '✅ Kirishni tiklash'), f"acl:active:{target}:{int(not row['active'])}"),
               ('◀️ Adminlar ro‘yxati', 'acl:list:0')]
@@ -144,7 +144,9 @@ async def set_permission(call: CallbackQuery):
     _, _, target, permission, value = call.data.split(':')
     target = int(target)
     row = await db.get_admin_access(target)
-    if target == SUPER_ADMIN_ID or not row or permission not in ROLE_PERMISSIONS[row['role']] or value not in {'0', '1'}:
+    if (target == SUPER_ADMIN_ID or not row
+            or (permission not in ROLE_PERMISSIONS[row['role']] and permission not in OPTIONAL_PERMISSIONS)
+            or value not in {'0', '1'}):
         await call.answer('Ruxsatni o‘zgartirib bo‘lmaydi.', show_alert=True)
         return
     await db.set_admin_permission(call.from_user.id, target, permission, value == '1')

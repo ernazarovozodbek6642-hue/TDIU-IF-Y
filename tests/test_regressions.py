@@ -8,6 +8,7 @@ from utils.db_api.SQL import Database
 from utils.misc.funcsion import is_member_of_any_group
 from utils.spreadsheets import safe_excel_value
 from utils.scheduler import _birthday_job, _birthday_message_chunks
+from handlers.users.ADMIN.export import HEADERS
 
 
 class AnnouncementDatabase:
@@ -17,6 +18,9 @@ class AnnouncementDatabase:
 
 
 class RegressionTests(unittest.IsolatedAsyncioTestCase):
+    def test_excel_export_contains_username_column(self):
+        self.assertIn("Username", HEADERS)
+
     def test_excel_formula_prefixes_are_neutralized(self):
         for value in ("=SUM(A1:A2)", "+cmd", "-1+2", "@formula"):
             self.assertEqual(safe_excel_value(value), "'" + value)
@@ -61,6 +65,22 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("proof_photo_file_id IS NULL", query)
         self.assertIn("verification_method='photo'", query)
         self.assertIn("is_waitlist=FALSE", query)
+
+    async def test_manual_score_adjustment_requires_reason_and_is_audited(self):
+        db = Database()
+        db.execute = AsyncMock(return_value={"id": 1})
+        await db.add_score_adjustment(12, -5, "Sababsiz kelmadi", 99, 9, 2026)
+        args = db.execute.await_args.args
+        self.assertIn("score_adjustments", args[0])
+        self.assertEqual(args[1:], (12, -5, "Sababsiz kelmadi", 99, 9, 2026))
+        with self.assertRaises(ValueError):
+            await db.add_score_adjustment(12, 5, "x", 99, 9, 2026)
+
+    async def test_monthly_score_includes_manual_adjustments(self):
+        db = Database()
+        db.execute = AsyncMock(return_value=7)
+        self.assertEqual(await db.get_user_monthly_score(12, 9, 2026), 7)
+        self.assertIn("score_adjustments", db.execute.await_args.args[0])
 
     def test_birthday_messages_are_split_below_telegram_limit(self):
         users = [

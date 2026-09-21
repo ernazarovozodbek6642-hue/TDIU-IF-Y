@@ -39,9 +39,12 @@ async def admin_menu(user_id):
         (None, "📋Tadbirlar ro'yxati"),
         ('approve_event', '⏳ Tasdiqlash kutilmoqda'),
         ('broadcast', '✉️Faollarga habar yuborish'),
-        ('reports', "📋 Mening tadbirlarim" if access.role == 'assistant' else "📊Faollar ma'lumoti(exel)"),
+        ('export_activists', "📊Faollar ma'lumoti(exel)"),
         ('winners', '🏆 Oy talabalari'),
+        ('view_activists', '👤 Faollar'),
     ]
+    if access.role == 'assistant':
+        options.insert(4, ('reports', "📋 Mening tadbirlarim"))
     buttons = [KeyboardButton(text=text) for permission, text in options
                if access.role and (access.allows(permission) if permission else bool(access.permissions))]
     if access.role in {'super', 'chief'}:

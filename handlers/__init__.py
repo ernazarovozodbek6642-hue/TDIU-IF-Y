@@ -3,7 +3,7 @@ from aiogram import Dispatcher
 from . import commands
 from middlewares.access import protect
 from middlewares.membership import MembershipMiddleware
-from .users.ADMIN import access_admin, approvals
+from .users.ADMIN import access_admin, approvals, activists
 from .errors import error_handler
 from .users.ADMIN import (
     add_event, edit_event, event_list, settings as admin_settings,
@@ -18,6 +18,11 @@ from .users import help as help_
 
 def setup_routers(dp: Dispatcher):
     protect(access_admin.router, "super")
+    protect(activists.router, "view_activists", {
+        "score_adjust_start": "manage_scores",
+        "score_adjust_amount": "manage_scores",
+        "score_adjust_reason": "manage_scores",
+    })
     protect(approvals.router, "approve_event", event_scope=True)
     protect(add_event.router, "create_event")
     protect(edit_event.router, "edit_event", event_scope=True)
@@ -28,7 +33,7 @@ def setup_routers(dp: Dispatcher):
     protect(admin_settings.router, "super")
     protect(admin_groups.router, "super")
     protect(admin_broadcast.router, "broadcast")
-    protect(admin_export.router, "reports")
+    protect(admin_export.router, "export_activists")
     protect(admin_winners.router, "winners")
     protect(panel.router, "attendance", {"event_excel_report": "reports"}, event_scope=True)
     protect(verification.router, "public", {
@@ -36,6 +41,7 @@ def setup_routers(dp: Dispatcher):
     }, event_scope=True)
     dp.include_router(error_handler.router)
     dp.include_router(access_admin.router)
+    dp.include_router(activists.router)
     dp.include_router(approvals.router)
     dp.include_router(commands.router)
     new_users.router.message.middleware(MembershipMiddleware())
