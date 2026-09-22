@@ -16,6 +16,7 @@ from loader import dp, db, bot
 from states.Admin_state import EDIT_EVENT
 from utils.announcements import update_event_announcement
 from utils.logger_channel import log_action
+from utils.misc.funcsion import normalize_event_location
 
 router = Router()
 router.message.filter(IsAdmin())
@@ -79,6 +80,10 @@ async def edit_field_choose(call: CallbackQuery, state: FSMContext):
     elif field == "time":
         await call.message.answer(
             f"{EDIT_FIELD_LABELS[field]} — yangi vaqtni kiriting (namuna: 14:30):", reply_markup=back_menu
+        )
+    elif field == "location":
+        await call.message.answer(
+            f"{EDIT_FIELD_LABELS[field]} — oddiy manzil yoki https:// havolani kiriting:", reply_markup=back_menu
         )
     else:
         await call.message.answer(f"{EDIT_FIELD_LABELS[field]} — yangi qiymatni kiriting:", reply_markup=back_menu)
@@ -180,6 +185,8 @@ async def edit_field_value(msg: Message, state: FSMContext):
             await msg.answer("Qiymat bo'sh yoki ruxsat etilgan uzunlikdan katta")
             return
         new_display = value
+        if field == "location":
+            value = normalize_event_location(value)
 
     await db.update_event(event_id, **{field: value})
     await state.clear()

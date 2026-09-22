@@ -3,9 +3,9 @@ from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from utils.announcements import build_announcement_text, send_event_announcement
+from utils.announcements import _location_line, build_announcement_text, send_event_announcement
 from utils.db_api.SQL import Database
-from utils.misc.funcsion import is_member_of_any_group
+from utils.misc.funcsion import is_member_of_any_group, normalize_event_location
 from utils.spreadsheets import safe_excel_value
 from utils.scheduler import _birthday_job, _birthday_message_chunks
 from handlers.users.ADMIN.export import HEADERS
@@ -16,8 +16,17 @@ class AnnouncementDatabase:
         people = [{"full_name": f"<User {index}>"} for index in range(1000)]
         return people, people
 
+    async def get_user(self, user_id):
+        return {"user_id": user_id, "user_name": "masul_user", "full_name": "Mas’ul"}
+
 
 class RegressionTests(unittest.IsolatedAsyncioTestCase):
+    def test_event_location_accepts_text_link_and_renders_clickable_link(self):
+        self.assertEqual(normalize_event_location("Universitet stadioni"), "text:Universitet stadioni")
+        link = "https://maps.google.com/?q=41.3,69.2"
+        self.assertEqual(normalize_event_location(link), f"link:{link}")
+        self.assertIn(f'href="{link}"', _location_line(f"link:{link}"))
+
     def test_excel_export_contains_username_column(self):
         self.assertIn("Username", HEADERS)
 
@@ -37,6 +46,9 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
             "participants_count": 1000,
             "waitlist_count": 1000,
             "score": 5,
+            "penalty_score": 2,
+            "verification_method": "photo",
+            "responsible_person": 99,
             "location": "text:<Hall>",
         }
         text = await build_announcement_text(AnnouncementDatabase(), event, "safe_bot")
@@ -44,6 +56,10 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("&lt;b&gt;unsafe&lt;/b&gt;", text)
         self.assertIn("&lt;Hall&gt;", text)
         self.assertNotIn("<script>", text)
+        self.assertIn("👥 Joylar: 1000/1000", text)
+        self.assertIn("🔎 Davomat: rasm orqali tasdiqlanadi", text)
+        self.assertIn("👤 Mas’ul: @masul_user", text)
+        self.assertIn("🆔 Tadbir ID: <code>7</code>", text)
 
     async def test_approved_event_with_no_groups_returns_zero_delivery(self):
         db = SimpleNamespace(get_all_groups=AsyncMock(return_value=[]))

@@ -2,6 +2,7 @@ import random
 from datetime import datetime
 import pytz
 from html import escape
+from urllib.parse import urlparse
 
 
 async def generate_unique_8_digit_event_id(pool):
@@ -59,3 +60,12 @@ async def is_member_of_any_group(bot, db, user_id: int) -> bool:
         except Exception:
             continue
     return False
+
+
+def normalize_event_location(value: str) -> str:
+    """Store plain addresses and web links distinctly; geo values are handled separately."""
+    value = (value or "").strip()
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return f"link:{value}"
+    return f"text:{value}"

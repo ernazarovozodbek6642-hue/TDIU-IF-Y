@@ -19,7 +19,7 @@ from keyboards.inline.Admin_keyboard_in import (
 from loader import dp, db, bot
 from states.Admin_state import EVENT
 from utils.logger_channel import log_action
-from utils.misc.funcsion import generate_unique_8_digit_event_id
+from utils.misc.funcsion import generate_unique_8_digit_event_id, normalize_event_location
 
 router = Router()
 router.message.filter(IsAdmin())
@@ -177,7 +177,7 @@ async def waitlist_count(msg: Message, state: FSMContext):
         return
     await state.update_data(waitlist_count=int(msg.text))
     await msg.answer(
-        text="Tadbir joylashuvini yuboring (📍 tugma orqali) yoki manzilni matn sifatida yozing",
+        text="Tadbir joylashuvini yuboring: 📍 geolokatsiya, oddiy manzil matni yoki https:// havola",
         reply_markup=location
     )
     await state.set_state(EVENT.location)
@@ -199,7 +199,7 @@ async def event_location_text(msg: Message, state: FSMContext):
     if not value or len(value) > 250:
         await msg.answer("Manzil bo'sh bo'lmasligi va 250 belgidan oshmasligi kerak")
         return
-    await state.update_data(location=f"text:{value}")
+    await state.update_data(location=normalize_event_location(value))
     await msg.answer(
         text="Ma'sul shaxsni qidirish uchun F.I.Sh (yoki uning bir qismi)ni yozing",
         reply_markup=back_menu
@@ -332,6 +332,10 @@ async def _show_confirmation(msg: Message, state: FSMContext):
             latitude=float(coords.split(".:")[1])
         )
         await location_msg.reply(text=text, reply_markup=confirmation_event)
+    elif event_location.startswith("link:"):
+        link = event_location[len("link:"):]
+        text += f'📍 <b>Manzil:</b> <a href="{escape(link)}">Manzilni ochish</a>\n'
+        await msg.answer(text=text, reply_markup=confirmation_event, disable_web_page_preview=True)
     else:
         address = event_location[len("text:"):] if event_location.startswith("text:") else event_location
         text += f"📍 <b>Manzil:</b> {escape(address)}\n"

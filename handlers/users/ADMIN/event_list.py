@@ -101,12 +101,16 @@ async def _render_event_info(event_id: int):
     location = str(event["location"] or "")
     if location.startswith("text:"):
         text += f"📍 Manzil: {escape(location[5:])}\n"
+    elif location.startswith("link:"):
+        text += f'📍 <a href="{escape(location[5:])}">Manzilni ochish</a>\n'
     elif location.startswith("geo:"):
         try:
             longitude, latitude = location[4:].split(".:", 1)
             text += f'📍 <a href="https://maps.google.com/?q={escape(latitude)},{escape(longitude)}">Xaritada ochish</a>\n'
         except ValueError:
             pass
+    elif location.startswith(("http://", "https://")):
+        text += f'📍 <a href="{escape(location)}">Manzilni ochish</a>\n'
     elif location:
         text += f"📍 Manzil: {escape(location)}\n"
     text += f"🟦 <b>Ro'yxatdan o'tganlar ({len(registered)}):</b>\n"

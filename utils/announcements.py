@@ -11,32 +11,70 @@ async def _bot_username(bot):
 async def build_announcement_text(db, event, bot_username, edit_note=None):
     main_list, waitlist = await db.get_event_participants(event["event_id"])
 
+    capacity = int(event.get("participants_count") or 0)
+    waitlist_capacity = int(event.get("waitlist_count") or 0)
+    main_count, waitlist_count = len(main_list), len(waitlist)
+    if main_count < capacity:
+        registration_status = "🟢 Ro‘yxatdan o‘tish ochiq"
+    elif waitlist_count < waitlist_capacity:
+        registration_status = "🟡 Asosiy joylar to‘lgan, zaxira ochiq"
+    else:
+        registration_status = "🔴 Barcha joylar to‘lgan"
+
+    responsible = "—"
+    responsible_id = event.get("responsible_person")
+    if responsible_id:
+        user = await db.get_user(responsible_id)
+        if user:
+            if user["user_name"]:
+                responsible = f"@{escape(str(user['user_name']))}"
+            else:
+                responsible = (
+                    f'<a href="tg://user?id={int(user["user_id"])}">'
+                    f'{escape(str(user["full_name"]))}</a>'
+                )
+
+    event_date = event["date"]
+    if hasattr(event_date, "strftime"):
+        event_date = event_date.strftime("%d-%m-%Y")
+    verification_labels = {
+        "manual": "qo‘lda tasdiqlanadi",
+        "photo": "rasm orqali tasdiqlanadi",
+    }
+    verification = verification_labels.get(
+        event.get("verification_method"), str(event.get("verification_method") or "—")
+    )
+
     lines = [
         "#tadbir",
+        "",
         f"🎉 <b>{escape(str(event['event_name']))}</b>",
         f"📝 {escape(str(event['description'] or ''))}",
-        f"🗓 Sana: {event['date']} | ⏰ {event['time']}",
-        f"👥 Kerakli odam soni: {event['participants_count']}",
-        f"🔁 Zaxira: {event['waitlist_count']}",
-        f"⭐ Ball: {event['score']}",
+        "",
+        f"🗓 Sana: {event_date}",
+        f"⏰ Vaqt: {event['time']}",
         _location_line(event.get("location")),
-        f"🔗 <a href=\"https://t.me/{escape(str(bot_username))}?start=event_{event['event_id']}\">Ro'yxatdan o'tish</a>",
+        "",
+        f"👥 Joylar: {main_count}/{capacity}",
+        f"🔁 Zaxira: {waitlist_count}/{waitlist_capacity}",
+        f"📊 Holat: {registration_status}",
+        "",
+        f"⭐ Ishtirok uchun: +{int(event.get('score') or 0)} ball",
+        f"🚫 Yozilib kelmaslik: −{int(event.get('penalty_score') or 0)} ball",
+        f"🔎 Davomat: {escape(verification)}",
+        "",
+        f"👤 Mas’ul: {responsible}",
+        f"🆔 Tadbir ID: <code>{event['event_id']}</code>",
+        "",
+        f"🔗 <a href=\"https://t.me/{escape(str(bot_username))}?start=event_{event['event_id']}\">Ro‘yxatdan o‘tish</a>",
+        "",
+        "⚠️ Yozilgandan keyin qatnasha olmasangiz, tadbir boshlanishidan oldin voz keching.",
     ]
     if edit_note:
         # Edit notes can contain an old and a new long description. Keep enough
         # context for administrators without risking Telegram's message limit.
         lines.append(f"\n✏️ <b>Tahrirlandi:</b>\n{escape(str(edit_note)[:500])}")
-    lines.extend(["———", "✅ <b>Ro'yxatdan o'tganlar:</b>"])
-    if main_list:
-        _append_people_with_limit(lines, main_list)
-    else:
-        lines.append("— hali hech kim yo'q")
-
-    if waitlist:
-        lines.append("\n🔁 <b>Zaxira:</b>")
-        _append_people_with_limit(lines, waitlist)
-
-    return "\n".join(filter(None, lines))
+    return "\n".join(lines).strip()
 
 
 def _location_line(location):
@@ -49,6 +87,11 @@ def _location_line(location):
             return ""
     if value.startswith("text:"):
         value = value[5:]
+    elif value.startswith("link:"):
+        link = value[5:]
+        return f'📍 <a href="{escape(link)}">Manzilni ochish</a>'
+    elif value.startswith(("http://", "https://")):
+        return f'📍 <a href="{escape(value)}">Manzilni ochish</a>'
     return f"📍 Manzil: {escape(value)}" if value else ""
 
 
