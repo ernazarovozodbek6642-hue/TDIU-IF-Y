@@ -48,3 +48,7 @@ class ACTIVISTS(StatesGroup):
     score_amount = State()
     score_reason = State()
 
+
+class ATTENDANCE(StatesGroup):
+    searching = State()
+

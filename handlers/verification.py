@@ -51,7 +51,9 @@ async def submit_proof(msg: Message, state: FSMContext):
         await msg.answer("Bu tadbir uchun endi tasdiqlash mumkin emas", reply_markup=user_main_menu)
         await state.clear()
         return
-    confirmer_id = event["media_responsible"] or event["responsible_person"]
+    # Attendance proof is always reviewed by the event responsible person.
+    # The media responsible person only uploads event media.
+    confirmer_id = event["responsible_person"]
     if confirmer_id and not (await get_access(db, confirmer_id)).can_event(event, "attendance"):
         confirmer_id = SUPER_ADMIN_ID
     if not confirmer_id:

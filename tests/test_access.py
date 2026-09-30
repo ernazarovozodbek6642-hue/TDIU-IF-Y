@@ -22,6 +22,10 @@ class FakeDatabase:
                      media_responsible=None, is_closed=False, approval_status='approved'),
             20: dict(event_id=20, direction_id=2, created_by=103, responsible_person=103,
                      media_responsible=None, is_closed=False, approval_status='approved'),
+            30: dict(event_id=30, direction_id=1, created_by=555, responsible_person=555,
+                     media_responsible=104, is_closed=False, approval_status='approved'),
+            40: dict(event_id=40, direction_id=1, created_by=555, responsible_person=105,
+                     media_responsible=105, is_closed=False, approval_status='approved'),
         }
 
     async def get_admin_access(self, user_id):
@@ -35,9 +39,12 @@ class FakeDatabase:
 
     async def has_active_event_responsibility(self, user_id):
         return any(
-            not event['is_closed'] and user_id in {event['responsible_person'], event['media_responsible']}
+            not event['is_closed'] and user_id == event['responsible_person']
             for event in self.events.values()
         )
+
+    async def has_event_media_responsibility(self, user_id):
+        return any(user_id == event['media_responsible'] for event in self.events.values())
 
 
 def callback(user_id, data):
@@ -116,6 +123,28 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         _, handler, _ = await self.invoke(102, 'attendance', cb='evattend:10')
         handler.assert_not_awaited()
         self.assertFalse((await get_access(self.db, 102)).can_event(self.db.events[10], 'reports'))
+
+    async def test_media_responsible_can_only_upload_assigned_event_media(self):
+        access = await get_access(self.db, 104)
+        self.assertEqual(access.role, 'media')
+        self.assertTrue(access.can_event(self.db.events[30], 'upload_media'))
+        self.assertFalse(access.can_event(self.db.events[30], 'attendance'))
+        self.assertFalse(access.can_event(self.db.events[30], 'reports'))
+        self.assertFalse(access.can_event(self.db.events[30], 'edit_event'))
+        self.assertFalse(access.can_event(self.db.events[40], 'upload_media'))
+
+    async def test_assistant_media_assignment_does_not_grant_event_editing(self):
+        self.db.events[10].update(created_by=555, responsible_person=555, media_responsible=102)
+        access = await get_access(self.db, 102)
+        self.assertTrue(access.can_event(self.db.events[10], 'upload_media'))
+        self.assertFalse(access.can_event(self.db.events[10], 'edit_event'))
+        self.assertFalse(access.can_event(self.db.events[10], 'attendance'))
+
+    async def test_same_person_can_be_event_and_media_responsible(self):
+        access = await get_access(self.db, 105)
+        self.assertEqual(access.role, 'responsible')
+        self.assertTrue(access.can_event(self.db.events[40], 'attendance'))
+        self.assertTrue(access.can_event(self.db.events[40], 'upload_media'))
 
     async def test_chief_can_manage_all_directions(self):
         result, handler, _ = await self.invoke(101, 'attendance', cb='evattend:20')

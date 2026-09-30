@@ -30,6 +30,8 @@ def setup_routers(dp: Dispatcher):
     protect(edit_event.router, "edit_event", event_scope=True)
     protect(event_list.router, overrides={
         "event_attendance_list": "attendance", "toggle_attendance": "attendance",
+        "attendance_page": "attendance", "attendance_search_start": "attendance",
+        "attendance_search_query": "attendance", "attendance_show_all": "attendance",
         "close_event_handler": "close_event", "event_media": "reports",
     }, event_scope=True)
     protect(admin_settings.router, "super")
@@ -37,7 +39,13 @@ def setup_routers(dp: Dispatcher):
     protect(admin_broadcast.router, "broadcast")
     protect(admin_export.router, "export_activists")
     protect(admin_winners.router, "winners")
-    protect(panel.router, "attendance", {"event_excel_report": "reports"}, event_scope=True)
+    protect(panel.router, "attendance", {
+        "my_events": None, "panel_back_to_events": None,
+        "event_excel_report": "reports",
+        "upload_media_start": "upload_media",
+        "upload_media_document": "upload_media",
+        "upload_media_photo": "upload_media",
+    }, event_scope=True)
     protect(verification.router, "public", {
         "proof_confirm": "attendance", "proof_reject": "attendance",
     }, event_scope=True)

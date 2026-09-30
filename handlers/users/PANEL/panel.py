@@ -30,7 +30,10 @@ async def panel_exit(msg: Message, state: FSMContext):
 async def _send_my_events(msg: Message, user_id: int):
     access = await get_access(db, user_id)
     events = await db.get_scoped_events(None, user_id)
-    events = [e for e in events if access.can_event(e, "reports")]
+    events = [
+        e for e in events
+        if access.can_event(e, "reports") or access.can_event(e, "upload_media")
+    ]
     if not events:
         await msg.answer("Sizga biriktirilgan faol tadbirlar yo'q")
         return
@@ -101,7 +104,7 @@ async def upload_media_start(call: CallbackQuery, state: FSMContext):
     access = await get_access(db, call.from_user.id)
     if (not event or event["approval_status"] != "approved"
             or event["media_responsible"] != call.from_user.id
-            or not access.can_event(event, "attendance")):
+            or not access.can_event(event, "upload_media")):
         await call.answer("Ruxsat yo'q", show_alert=True)
         return
 
@@ -125,7 +128,7 @@ async def upload_media_document(msg: Message, state: FSMContext):
     access = await get_access(db, msg.from_user.id)
     if (not event or event["approval_status"] != "approved"
             or event["media_responsible"] != msg.from_user.id
-            or not access.can_event(event, "attendance")):
+            or not access.can_event(event, "upload_media")):
         await msg.answer("Tadbir topilmadi")
         await state.clear()
         return
@@ -150,7 +153,7 @@ async def upload_media_photo(msg: Message, state: FSMContext):
     access = await get_access(db, msg.from_user.id)
     if (not event or event["approval_status"] != "approved"
             or event["media_responsible"] != msg.from_user.id
-            or not access.can_event(event, "attendance")):
+            or not access.can_event(event, "upload_media")):
         await msg.answer("Tadbir topilmadi")
         await state.clear()
         return

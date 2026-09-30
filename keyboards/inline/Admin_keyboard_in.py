@@ -137,16 +137,29 @@ def event_actions_keyboard(event_id: int, is_closed: bool, show_media_upload: bo
     return builder.as_markup()
 
 
-def manual_attendance_keyboard(event_id: int, users):
+def manual_attendance_keyboard(event_id: int, users, page: int = 0,
+                               total: int = None, query: str = None):
     builder = InlineKeyboardBuilder()
     for u in users:
         mark = "✅" if u["status"] == "confirmed" else ("🚫" if u["status"] in ("not_attended", "rejected") else "⬜")
+        username = f"@{u['user_name']} | " if u.get("user_name") else ""
+        group = f" — {u['group_name']}" if u.get("group_name") else ""
         builder.add(InlineKeyboardButton(
-            text=f"{mark} {u['full_name']}"[:64],
-            callback_data=f"toggleattend:{event_id}:{u['user_id']}"
+            text=f"{mark} {username}{u['full_name']}{group}"[:64],
+            callback_data=f"toggleattend:{event_id}:{u['user_id']}:{page}"
         ))
+    total = len(users) if total is None else total
+    pages = max(1, (total + 14) // 15)
+    if page > 0:
+        builder.add(InlineKeyboardButton(text="◀️ Oldingi", callback_data=f"attpage:{event_id}:{page - 1}"))
+    builder.add(InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="attnoop"))
+    if page + 1 < pages:
+        builder.add(InlineKeyboardButton(text="Keyingi ▶️", callback_data=f"attpage:{event_id}:{page + 1}"))
+    builder.add(InlineKeyboardButton(text="🔎 Izlash", callback_data=f"attsearch:{event_id}"))
+    if query:
+        builder.add(InlineKeyboardButton(text="📋 Barchasi", callback_data=f"attall:{event_id}"))
     builder.add(InlineKeyboardButton(text="◀️ Ortga", callback_data=f"event:{event_id}"))
-    builder.adjust(1)
+    builder.adjust(*([1] * len(users)), 3, 2)
     return builder.as_markup()
 
 async def permitted_event_keyboard(event, user_id, back_callback='backmonths'):
@@ -158,7 +171,7 @@ async def permitted_event_keyboard(event, user_id, back_callback='backmonths'):
     if active and access.can_event(event, 'attendance'):
         b.button(text='✅ Qatnashuvni belgilash', callback_data=f'evattend:{event_id}')
     if (event['approval_status'] == 'approved' and event['media_responsible'] == user_id
-            and access.can_event(event, 'attendance')):
+            and access.can_event(event, 'upload_media')):
         b.button(text='📸 Rasm yuklash', callback_data=f'uploadmedia:{event_id}')
     if access.can_event(event, 'reports'):
         b.button(text='🖼 Rasmlar', callback_data=f'eventmedia:{event_id}')

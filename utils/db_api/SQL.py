@@ -629,8 +629,13 @@ class Database(AccessDatabase):
         return await self.execute("""
             SELECT EXISTS(
                 SELECT 1 FROM events
-                WHERE (responsible_person=$1 OR media_responsible=$1) AND is_closed=FALSE
+                WHERE responsible_person=$1 AND is_closed=FALSE
             )
+        """, user_id, fetchval=True)
+
+    async def has_event_media_responsibility(self, user_id: int):
+        return await self.execute("""
+            SELECT EXISTS(SELECT 1 FROM events WHERE media_responsible=$1)
         """, user_id, fetchval=True)
 
     async def assign_media_responsible(self, event_id: int, user_id: int):
@@ -830,6 +835,36 @@ class Database(AccessDatabase):
         main_list = [r for r in rows if not r["is_waitlist"]]
         waitlist = [r for r in rows if r["is_waitlist"]]
         return main_list, waitlist
+
+    async def count_event_participants(self, event_id: int, query: str = None):
+        query = (query or "").strip()
+        return await self.execute(
+            """SELECT COUNT(*)
+               FROM event_users eu JOIN users u ON u.user_id=eu.user_id
+               WHERE eu.event_id=$1 AND eu.status!='withdrawn'
+                 AND ($2='' OR u.full_name ILIKE '%' || $2 || '%'
+                      OR COALESCE(u.user_name, '') ILIKE '%' || $2 || '%'
+                      OR COALESCE(u.group_name, '') ILIKE '%' || $2 || '%'
+                      OR u.user_id::text=$2)""",
+            event_id, query, fetchval=True,
+        )
+
+    async def get_event_participants_page(self, event_id: int, limit: int = 15,
+                                          offset: int = 0, query: str = None):
+        query = (query or "").strip()
+        return await self.execute(
+            """SELECT u.user_id, u.full_name, u.user_name, u.group_name,
+                      eu.status, eu.is_waitlist
+               FROM event_users eu JOIN users u ON u.user_id=eu.user_id
+               WHERE eu.event_id=$1 AND eu.status!='withdrawn'
+                 AND ($2='' OR u.full_name ILIKE '%' || $2 || '%'
+                      OR COALESCE(u.user_name, '') ILIKE '%' || $2 || '%'
+                      OR COALESCE(u.group_name, '') ILIKE '%' || $2 || '%'
+                      OR u.user_id::text=$2)
+               ORDER BY eu.is_waitlist, u.full_name, u.user_id
+               LIMIT $3 OFFSET $4""",
+            event_id, query, limit, offset, fetch=True,
+        )
 
     async def get_event_user(self, event_id: int, user_id: int):
         sql = "SELECT * FROM event_users WHERE event_id=$1 AND user_id=$2"

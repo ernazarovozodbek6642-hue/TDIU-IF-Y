@@ -358,7 +358,8 @@ async def _notify_assigned(event):
         media_text = (
             f"🎥 Siz <b>{escape(str(event['event_name']))}</b> tadbiriga media mas'ul shaxs qilib tayinlandingiz.\n"
             f"🗓 Sana: {event['date']} | ⏰ {event['time']}\n\n"
-            f"Tasdiqlash so'rovlarini ko'rish va tadbir rasmlarini yuklash uchun <b>/panel</b> buyrug'ini yuboring."
+            f"Tadbir rasmlarini yuklash uchun <b>/panel</b> buyrug'ini yuboring. "
+            f"Davomatni tasdiqlash tadbir mas’uli tomonidan amalga oshiriladi."
         )
         try:
             await bot.send_message(event["media_responsible"], media_text)

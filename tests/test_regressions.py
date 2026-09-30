@@ -9,6 +9,7 @@ from utils.misc.funcsion import is_member_of_any_group, normalize_event_location
 from utils.spreadsheets import safe_excel_value
 from utils.scheduler import _birthday_job, _birthday_message_chunks
 from handlers.users.ADMIN.export import HEADERS
+from keyboards.inline.Admin_keyboard_in import manual_attendance_keyboard
 
 
 class AnnouncementDatabase:
@@ -21,6 +22,21 @@ class AnnouncementDatabase:
 
 
 class RegressionTests(unittest.IsolatedAsyncioTestCase):
+    def test_manual_attendance_keyboard_stays_below_telegram_limit(self):
+        users = [
+            {
+                "user_id": index, "full_name": f"Talaba {index}",
+                "user_name": f"user{index}", "group_name": "IRB",
+                "status": "pending", "is_waitlist": False,
+            }
+            for index in range(15)
+        ]
+        markup = manual_attendance_keyboard(77, users, page=0, total=125)
+        callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+        self.assertEqual(sum(value.startswith("toggleattend:77:") for value in callbacks), 15)
+        self.assertIn("attpage:77:1", callbacks)
+        self.assertLess(len(callbacks), 100)
+
     def test_event_location_accepts_text_link_and_renders_clickable_link(self):
         self.assertEqual(normalize_event_location("Universitet stadioni"), "text:Universitet stadioni")
         link = "https://maps.google.com/?q=41.3,69.2"

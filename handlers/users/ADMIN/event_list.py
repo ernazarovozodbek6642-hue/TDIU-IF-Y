@@ -2,6 +2,7 @@ from utils.access import can_view_event
 from html import escape
 from keyboards.inline.Admin_keyboard_in import permitted_event_keyboard
 from aiogram import Router, F
+from aiogram.fsm.context import FSMContext
 
 from aiogram.types import CallbackQuery, Message
 
@@ -15,6 +16,7 @@ from utils.announcements import send_event_result
 from utils.logger_channel import log_action
 from utils.misc.funcsion import format_user
 from utils.misc.upload_image import send_event_media
+from states.Admin_state import ATTENDANCE
 
 router = Router()
 router.message.filter(IsAdmin())
@@ -136,30 +138,94 @@ async def event_by_id(call: CallbackQuery):
     await call.answer()
 
 
+async def _render_attendance(target, event_id: int, state: FSMContext,
+                             page: int = 0, edit: bool = False):
+    data = await state.get_data()
+    query = (data.get("attendance_query") or "").strip()
+    if data.get("attendance_event_id") != event_id:
+        query = ""
+        await state.update_data(attendance_event_id=event_id, attendance_query="")
+    total = int(await db.count_event_participants(event_id, query))
+    pages = max(1, (total + 14) // 15)
+    page = min(max(0, page), pages - 1)
+    users = await db.get_event_participants_page(event_id, 15, page * 15, query)
+    query_line = f"\n🔎 Qidiruv: <b>{escape(query)}</b>" if query else ""
+    text = (
+        "Talabani bosib, tasdiqlash holatini o‘zgartiring:\n"
+        "⬜ — kutilmoqda, ✅ — tasdiqlangan, 🚫 — kelmagan/rad etilgan"
+        f"{query_line}\nJami: <b>{total}</b> ta"
+    )
+    markup = manual_attendance_keyboard(event_id, users, page, total, query)
+    if edit:
+        await target.edit_text(text, reply_markup=markup)
+    else:
+        await target.answer(text, reply_markup=markup)
+
+
 @router.callback_query(F.data.startswith('evattend:'))
-async def event_attendance_list(call: CallbackQuery):
+async def event_attendance_list(call: CallbackQuery, state: FSMContext):
     event_id = int(call.data.split(':')[-1])
     event = await db.get_event(event_id)
     if not event or not await _can_manage_event(event, call.from_user.id):
         await call.answer("Ruxsat yo'q", show_alert=True)
         return
-    info = await db.get_event_full_info(event_id)
-    if not info["registered"]:
+    if not await db.count_event_participants(event_id):
         await call.answer("Ro'yxatdan o'tganlar yo'q", show_alert=True)
         return
+    await state.update_data(attendance_event_id=event_id, attendance_query="")
     await call.message.delete()
-    await call.message.answer(
-        "Talabani bosib, tasdiqlash holatini o'zgartiring:\n"
-        "⬜ - kutilmoqda, ✅ - tasdiqlangan, 🚫 - kelmagan/rad etilgan",
-        reply_markup=manual_attendance_keyboard(event_id, info["registered"])
-    )
+    await _render_attendance(call.message, event_id, state)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith('attpage:'))
+async def attendance_page(call: CallbackQuery, state: FSMContext):
+    _, event_id, page = call.data.split(':')
+    await _render_attendance(call.message, int(event_id), state, int(page), edit=True)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith('attsearch:'))
+async def attendance_search_start(call: CallbackQuery, state: FSMContext):
+    event_id = int(call.data.split(':')[-1])
+    await state.update_data(attendance_event_id=event_id)
+    await state.set_state(ATTENDANCE.searching)
+    await call.message.answer("🔎 Talabaning F.I.Sh, username, guruhi yoki Telegram ID sini kiriting:")
+    await call.answer()
+
+
+@router.message(ATTENDANCE.searching, ~F.text.startswith('/'))
+async def attendance_search_query(msg: Message, state: FSMContext):
+    query = (msg.text or "").strip()
+    if len(query) < 2:
+        await msg.answer("Qidiruv uchun kamida 2 ta belgi kiriting.")
+        return
+    data = await state.get_data()
+    event_id = data.get("attendance_event_id")
+    await state.set_state(None)
+    await state.update_data(attendance_query=query)
+    await _render_attendance(msg, event_id, state)
+
+
+@router.callback_query(F.data.startswith('attall:'))
+async def attendance_show_all(call: CallbackQuery, state: FSMContext):
+    event_id = int(call.data.split(':')[-1])
+    await state.update_data(attendance_event_id=event_id, attendance_query="")
+    await _render_attendance(call.message, event_id, state, edit=True)
+    await call.answer()
+
+
+@router.callback_query(F.data == 'attnoop')
+async def attendance_noop(call: CallbackQuery):
     await call.answer()
 
 
 @router.callback_query(F.data.startswith('toggleattend:'))
-async def toggle_attendance(call: CallbackQuery):
-    _, event_id, user_id = call.data.split(':')
+async def toggle_attendance(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(':')
+    _, event_id, user_id = parts[:3]
     event_id, user_id = int(event_id), int(user_id)
+    page = int(parts[3]) if len(parts) > 3 else 0
     event = await db.get_event(event_id)
     if not event or not await _can_manage_event(event, call.from_user.id):
         await call.answer("Ruxsat yo'q", show_alert=True)
@@ -181,8 +247,7 @@ async def toggle_attendance(call: CallbackQuery):
         await call.answer("Holat allaqachon o‘zgargan", show_alert=True)
         return
 
-    info = await db.get_event_full_info(event_id)
-    await call.message.edit_reply_markup(reply_markup=manual_attendance_keyboard(event_id, info["registered"]))
+    await _render_attendance(call.message, event_id, state, page, edit=True)
     await log_action(bot, call.from_user,
                       f"Qatnashuv o'zgartirildi (tadbir {event_id}): {student['full_name']} → {new_status}")
     await call.answer()

@@ -67,7 +67,7 @@ async def _remind_missing_media(bot, db):
     events = await db.get_closed_events_missing_media(required_count)
     for event in events:
         try:
-            if not (await get_access(db, event["media_responsible"])).can_event(event, "attendance"):
+            if not (await get_access(db, event["media_responsible"])).can_event(event, "upload_media"):
                 continue
             await bot.send_message(
                 event["media_responsible"],

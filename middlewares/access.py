@@ -38,8 +38,18 @@ class AccessMiddleware(BaseMiddleware):
                         event_id = int(parts[1])
                     except (ValueError, IndexError):
                         allowed = False
-            if event_id is None and name in {'edit_field_value', 'upload_media_document', 'upload_media_photo'}:
-                event_id = state_data.get('edit_event_id') or state_data.get('media_event_id')
+            if isinstance(event, CallbackQuery) and event_id is None:
+                parts = (event.data or '').split(':')
+                if parts[0] in {'attpage', 'attsearch', 'attall'}:
+                    try:
+                        event_id = int(parts[1])
+                    except (ValueError, IndexError):
+                        allowed = False
+            if event_id is None and name in {
+                    'edit_field_value', 'upload_media_document', 'upload_media_photo',
+                    'attendance_search_query'}:
+                event_id = (state_data.get('edit_event_id') or state_data.get('media_event_id')
+                            or state_data.get('attendance_event_id'))
                 if not event_id:
                     allowed = False
             if event_id is not None:

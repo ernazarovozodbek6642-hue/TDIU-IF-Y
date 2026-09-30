@@ -16,19 +16,21 @@ PERMISSIONS = {
     "manage_scores": "Faollarga ball qo‘shish va ayirish",
     "export_activists": "Faollar ma’lumotini Excel orqali olish",
     "delete_activists": "Faolni ro‘yxatdan o‘chirish",
+    "upload_media": "Biriktirilgan tadbirga rasm yuklash",
 }
 OPTIONAL_PERMISSIONS = frozenset({
     "view_activists", "manage_scores", "export_activists", "delete_activists",
 })
 ROLE_LABELS = {"super": "Super admin", "chief": "Bosh koordinator", "assistant": "Yordamchi admin",
-               "responsible": "Tadbir mas’uli"}
+               "responsible": "Tadbir mas’uli", "media": "Media mas’ul"}
 ROLE_PERMISSIONS = {
     "super": frozenset(PERMISSIONS),
     # Deleting an activist is intentionally not a default chief capability;
     # the super admin may grant it explicitly when needed.
     "chief": frozenset(set(PERMISSIONS) - {"delete_activists"}),
-    "assistant": frozenset({"create_event", "edit_event", "attendance", "close_event", "reports", "broadcast"}),
-    "responsible": frozenset({"attendance", "reports"}),
+    "assistant": frozenset({"create_event", "edit_event", "attendance", "close_event", "reports", "broadcast", "upload_media"}),
+    "responsible": frozenset({"attendance", "reports", "upload_media"}),
+    "media": frozenset({"upload_media"}),
 }
 
 
@@ -48,13 +50,17 @@ class Access:
             return False
         if self.role == "assistant" and own_event:
             return self.user_id in {
-                event.get("created_by"), event.get("responsible_person"), event.get("media_responsible")
+                event.get("created_by"), event.get("responsible_person")
             }
         if self.role == "responsible":
-            return self.user_id in {event.get("responsible_person"), event.get("media_responsible")}
+            return self.user_id == event.get("responsible_person")
+        if self.role == "media":
+            return self.user_id == event.get("media_responsible")
         return True
 
     def can_event(self, event, permission):
+        if permission == "upload_media":
+            return bool(event) and self.allows(permission) and self.user_id == event.get("media_responsible")
         assistant_own_only = {"edit_event", "attendance", "reports", "close_event", "broadcast"}
         own = self.role == "assistant" and permission in assistant_own_only
         return self.allows(permission) and self.in_scope(event, own_event=own)
@@ -72,6 +78,8 @@ async def get_access(db, user_id):
     if not row:
         if await db.has_active_event_responsibility(user_id):
             return Access(user_id, "responsible", permissions=ROLE_PERMISSIONS["responsible"])
+        if await db.has_event_media_responsibility(user_id):
+            return Access(user_id, "media", permissions=ROLE_PERMISSIONS["media"])
         return Access(user_id)
     allowed = ROLE_PERMISSIONS.get(row["role"], frozenset())
     # Unknown permissions never grant access; a role change resets overrides.
